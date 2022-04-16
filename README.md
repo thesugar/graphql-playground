@@ -80,3 +80,51 @@ console.log(`Running a GraphQL API server at http://localhost:${PORT}/graphql`)
 `graphiql` オプションを true にしたので、GraphiQL ツールを使って GraphQL クエリを手ずから発行できる。
 
 <img src="https://graphql.org/img/hello.png" alt="graphiQL">
+
+### GraphQL クライアント
+
+GraphQL API には REST API よりも多くの構造が備わっているため、[Relay](https://facebook.github.io/relay/) のような強力なクライアントが用意されている。Relay を使えばバッチ処理やキャッシュ等を自動的に扱うことができる。
+
+`express-graphql` を使えば、GraphQL サーバーをマウントしたエンドポイントに対して **HTTP POST リクエストを送る**だけで、GraphQL クエリを JSON ペイロードの `query` フィールドとして GraphQL に受け渡すことができる。
+
+前章で見たように GraphQL サーバーを `http://localhost:4000/graphql` で動かしており、`{ hello }` という GraphQL クエリを送信したいとする。`curl` を使えば以下のようなコマンドで実現できる。
+
+```sh
+curl -X POST \
+-H "Content-Type: application/json" \
+-d '{"query": "{ hello }"}' \
+http://localhost:4000/graphql
+```
+
+また、GUI 操作で試したい場合は前章で見た GraphiQL を使ったり、他にも [Insomnia](https://github.com/getinsomnia/insomnia) を使うことで実現できる。
+
+ブラウザからクエリを送るのも簡単にできる:
+
+```js
+fetch('/graphql', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  },
+  body: JSON.stringify({ query: '{ hello }' }),
+})
+  .then((res) => res.json())
+  .then((data) => console.log('data returned: ', data))
+```
+
+また、クライアント側で変数を使って GraphQL のクエリを組み上げるのも簡単に行える。**クエリには `$` をプレフィックスとして付したキーワードを用意して、ペイロードには `variables` フィールドを用意**する。
+
+fetch に渡す body の中身だけを書くとイメージは以下のとおり（ここではイメージだけ掴めばよい）:
+
+```js
+body: JSON.stringify({
+  query: `query RollDice $dice: Int!, $sides: Int) {
+        rollDice(numDice: $dice, numSides: $sides)
+    }`,
+  variables: { dice, sides },
+})
+```
+
+一般に、Relay のような GraphQL クライアントを使ってセットアップを行うのは少し時間がかかるが、アプリの規模が大きくなるにつれて有力。
+ここまでで、単一の文字列を受け取って文字列を返す GraphQL は書くことができた。
