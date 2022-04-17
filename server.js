@@ -6,11 +6,19 @@ import { buildSchema } from 'graphql'
 const schema = buildSchema(`
     type Query {
         hello: String
-    }`)
+        quoteOfTheDay: String
+        random: Float!
+        rollThreeDice: [Int]
+    }
+`)
 
 // 各 API エンドポイントについて、resolver 関数が rootValue から提供される
 const rootValue = {
   hello: () => 'Hello World!',
+  quoteOfTheDay: () =>
+    Math.random() < 0.5 ? 'Take it easy' : 'Salvation lies within',
+  random: () => Math.random(),
+  rollThreeDice: () => [1, 2, 3].map((_) => 1 + Math.floor(Math.random() * 6)),
 }
 
 const app = express()

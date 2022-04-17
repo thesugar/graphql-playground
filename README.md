@@ -1,8 +1,8 @@
-## GraphQL 入門
+# GraphQL 入門
 
 参考: https://graphql.org/graphql-js/
 
-### コードを書く
+## コードを書く
 
 GraphQL のクエリを扱うには以下が必要。
 
@@ -40,7 +40,7 @@ graphql({
 { data: [Object: null prototype] { hello: 'Hello World!' } }
 ```
 
-### Express で GraphQL サーバーを動かす
+## Express で GraphQL サーバーを動かす
 
 ```js
 import express from 'express'
@@ -81,7 +81,7 @@ console.log(`Running a GraphQL API server at http://localhost:${PORT}/graphql`)
 
 <img src="https://graphql.org/img/hello.png" alt="graphiQL">
 
-### GraphQL クライアント
+## GraphQL クライアント
 
 GraphQL API には REST API よりも多くの構造が備わっているため、[Relay](https://facebook.github.io/relay/) のような強力なクライアントが用意されている。Relay を使えばバッチ処理やキャッシュ等を自動的に扱うことができる。
 
@@ -128,3 +128,38 @@ body: JSON.stringify({
 
 一般に、Relay のような GraphQL クライアントを使ってセットアップを行うのは少し時間がかかるが、アプリの規模が大きくなるにつれて有力。
 ここまでで、単一の文字列を受け取って文字列を返す GraphQL は書くことができた。
+
+## 基本の型
+
+ほとんどのシチュエーションにおいて、行う必要のあることは**GraphQL スキーマ言語を使って API の型を特定すること**。GraphQL スキーマ言語は `buildSchema` 関数に引数として渡される。
+
+GraphQL スキーマ言語は `String`, `Int`, `Float`, `Boolean`, そして `ID` のスカラー型をサポートしている。これらはそのまま使って `buildSchema` 関数に渡すことができる。
+
+**デフォルトではすべての型は nullable** である。**`!` を末尾に付すことで null 禁止** になる。
+
+リスト型を使うには、型を `[]` で囲む。例）`[Int]`: 整数のリスト
+
+それぞれの型は JavaScript にマッピングできる。したがって API から返す値としては JavaScript のプレーンなオブジェクトを書けばいい。
+
+各型を返す API の例は以下のとおり:
+
+```js
+// GraphQL スキーマ言語を使ってスキーマを作成する
+const schema = buildSchema(`
+    type Query {
+        hello: String
+        quoteOfTheDay: String
+        random: Float!
+        rollThreeDice: [Int]
+    }
+`)
+
+// 各 API エンドポイントについて、resolver 関数が rootValue から提供される
+const rootValue = {
+  hello: () => 'Hello World!',
+  quoteOfTheDay: () =>
+    Math.random() < 0.5 ? 'Take it easy' : 'Salvation lies within',
+  random: () => Math.random(),
+  rollThreeDice: () => [1, 2, 3].map((_) => 1 + Math.floor(Math.random() * 6)),
+}
+```
