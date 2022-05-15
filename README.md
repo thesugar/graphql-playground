@@ -333,3 +333,215 @@ const rootValue = {
 これにより帯域幅を節約でき、アプリケーションがより速くなり、また、クライアント側のロジックがシンプルになる。
 
 ここまでで見てきた API はすべてデータを返却する設計になっていた。ストアされたデータを書き換えたり複雑な入力に対応するためには、「ミューテーションとインプットタイプ」を学ぼう（次章以降）。
+
+## Mutation と Input Type
+
+データを加工したり DB にインサートしたりすでに DB に存在するデータに変更を加えるような API を作る場合、`Query` ではなく `Mutation` エンドポイントを用意する必要がある。
+
+トップレベルに `Query` 型を定義したのと同様にトップレベルに `Mutation` 型を定義すればよい。
+
+たとえば、「今日の一言」を表示するサーバーがあったとして、誰でも一言を更新でき、誰でも現在の一言を読むことができるものとしよう。
+
+GraphQL スキーマは以下のようになる:
+
+```gql
+type Mutation {
+  setMessage(message: String): String
+}
+
+type Query {
+  getMessage: String
+}
+```
+
+DB の create や update にマッピングされる mutation は、サーバーがストアした値を返すように作っておくと便利。そうすることで、サーバーでデータをヘンクしたら、クライアントでもその変更があったことがわかる。
+
+mutation も query も root の resolver によって取り扱われる。その実装は以下のようなものとなる:
+
+```js
+const fakeDB = {}
+const root = {
+  setMessage: ({ message }) => {
+    faleDB.message = message
+    return message
+  },
+  getMessage: () => {
+    return fakeDB.message
+  }
+}
+```
+
+mutation を実装するのにこれ以上のものは不要。しかし多くの場合、同じ入力パラメータを取る複数の mutation を目にすることがあるだろう。
+よくある例としては、DB にオブジェクトを新規作成するときと、DB の中のオブジェクトを更新するときにまったく同じパラメータを受け付けるというようなものだ。
+
+スキーマをシンプルにするために、こんなときには "input types" が使える。`type` キーワードの代わりに `input` キーワードを使えばよい。
+
+
+例えば、「今日の一言」の例では、一つのメッセージではなくたくさんのメッセージを扱えるようにすると考えよう。
+`id` フィールドによって DB にインデックスを張り、各メッセージが `content` という文字列と `author` という文字列を持つとする。
+新しいメッセージの作成と古いメッセージの更新を行える mutation API がほしい。その場合以下のようなスキーマになる:
+
+```gql
+input MessageInput {
+  content: String
+  author: String
+}
+
+type Message {
+  id: ID!
+  content: String
+  author: String
+}
+
+type Query {
+  getMessage(id: ID!): Message
+}
+
+type Mutation {
+  createMessage(input: MessageInput): Message
+  updateMessage(id: ID!, input: MessageInput): Message
+}
+```
+
+ここで、2 つの mutation は `Message` 型を返すようにしているので、クライアント側は mutation リクエストの結果を見るだけで、新たに変更が加えられた `Message` についての情報を得ることができる。
+
+input type には他のオブジェクト型を含めることはでいず、基本的なスカラー型やリスト型、他の input type のみを含めることができる。
+
+input types の名前の最後に `Input` と付けるのは便利な慣習である。というのも、一つの概念的なオブジェクトに対して、微妙に異なる入力型と出力型の両方が必要になることが多いからである。
+
+上記まで見てきた例のサンプルコードは以下:
+
+```js
+import express from 'express'
+import { graphqlHTTP } from 'express-graphql'
+import { buildSchema } from 'graphql'
+import crypto from 'crypto'
+
+const schema = buildSchema(`
+  input MessageInput {
+      content: String
+      author: String
+  }
+
+  type Message {
+      id: ID!
+      content: String
+      author: String
+  }
+
+  type Query {
+      getMessage(id: ID!): Message
+  }
+
+  type Mutation {
+      createMessage(input: MessageInput): Message
+      updateMessage(id: ID!, input: MessageInput): Message
+  }
+`)
+
+// class Message {
+//   constructor(id, { content, author }) {
+//     this.id = id
+//     this.content = content
+//     this.author = author
+//   }
+// }
+// ↓と同じはず
+
+const message = (id, { content, author }) => ({
+  id,
+  content,
+  author,
+})
+
+const db = new Map() // fake database
+
+const root = {
+  getMessage: ({ id }) => {
+    const value = db.get(id)
+    if (value === undefined) {
+      throw new Error('no message exists with id ' + id)
+    }
+    return message(id, value)
+  },
+  createMessage: ({ input }) => {
+    const id = crypto.randomBytes(10).toString('hex')
+    db.set(id, input)
+    return message(id, input)
+  },
+  updateMessage: ({ id, input }) => {
+    const value = db.get(id)
+    if (value === undefined) {
+      throw new Error('no message exists with id ' + id)
+    }
+    db.set(id, input)
+    return message(id, value)
+  },
+}
+
+const app = express()
+app.use(
+  '/graphql',
+  graphqlHTTP({
+    schema,
+    rootValue: root,
+    graphiql: true,
+  })
+)
+
+const PORT = 4000
+app.listen(PORT, () => {
+  console.log(`Running a GraphQL API server at localhost:${PORT}/graphql`)
+})
+```
+
+mutation を行うには、GraphQL クエリの前に `mutation` キーワードをつける必要がある。引数としては input 型のオブジェクトを渡す。
+また、クエリの最後に `{ id }` のように書くことでレスポンスの内容を確認できる。
+
+```gql
+mutation {
+  createMessage(input: {
+    author: "John",
+    content: "hope is a good thing.",
+  }) {
+    id  # 新しく生成された message の id を確認できる
+    # ここに author などと書けば他の情報も取得できる
+  }
+}
+```
+
+今までと同様、クライアントからコードを使ってコールするときは変数を利用できる。
+
+```js
+const author = 'Noel'
+const content = 'Today is gonna be the day'
+const query = `
+  mutation CreateMessage($input: MessageInput) {
+    createMessage(input: $input) {
+      id
+    }
+  }
+`
+
+fetch('/graphql', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  },
+  body: JSON.stringify({
+    query,
+    variables: {
+      input: {
+        author,
+        content,
+      }
+    }
+  })
+})
+  .then(res => res.json())
+  .then(data => console.log('data returned', data))
+```
+
+mutation を伴うオペレーションには、新しいユーザーのサインアップのような、ユーザー情報の更新がある。
+GraphQL の mutation を実装することもできるが、既存のライブラリを活用することも可能である。
