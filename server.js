@@ -4,14 +4,46 @@ import { buildSchema } from 'graphql'
 
 // GraphQL スキーマ言語を使ってスキーマを作成する
 const schema = buildSchema(`
+    type RandomDie {
+      numSides: Int!
+      rollOnce: Int!
+      roll(numRolls: Int!): [Int]
+    }
+
     type Query {
         hello: String
         quoteOfTheDay: String
         random: Float!
         rollThreeDice: [Int]
         rollDice(numDice: Int!, numSides: Int): [Int]
+        getDie(numSides: Int): RandomDie
+        getDieWithRootlevelResolver(numSides: Int): RandomDie
     }
 `)
+
+// このクラスは RandomDie GraphQL type を implements する
+class RandomDie {
+  constructor(numSides) {
+    this.numSides = numSides
+  }
+
+  rollOnce() {
+    return 1 + Math.floor(Math.random() * this.numSides)
+  }
+
+  roll({ numRolls }) {
+    return [...Array(numRolls).keys()].map((_) => this.rollOnce())
+  }
+}
+
+const randomDieWithRootlevelResolver = ({ numSides }) => ({
+  numSides,
+  rollOnce: 1 + Math.floor(Math.random() * numSides),
+  roll: ({ numRolls }) =>
+    [...Array(numRolls).keys()].map(
+      (_) => 1 + Math.floor(Math.random() * numSides)
+    ),
+})
 
 // 各 API エンドポイントについて、resolver 関数が rootValue から提供される
 const rootValue = {
@@ -24,6 +56,8 @@ const rootValue = {
     [...Array(numDice).keys()].map(
       (_) => 1 + Math.floor(Math.random() * (numSides || 6))
     ),
+  getDie: ({ numSides }) => new RandomDie(numSides || 6),
+  getDieWithRootlevelResolver: randomDieWithRootlevelResolver,
 }
 
 const app = express()

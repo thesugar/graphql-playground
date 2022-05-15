@@ -195,10 +195,10 @@ type Query {
 
 ```js
 const rootValue = {
-    rollDice: ({ numDice, numSides }) =>
-      [...Array(numDice).keys()].map(
-        (_) => 1 + Math.floor(Math.random() * (numSides || 6))
-      ),
+  rollDice: ({ numDice, numSides }) =>
+    [...Array(numDice).keys()].map(
+      (_) => 1 + Math.floor(Math.random() * (numSides || 6))
+    ),
 }
 ```
 
@@ -227,13 +227,109 @@ fetch('/graphql', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    Accept: 'application/json',
   },
   body: JSON.stringify({
     query, // 👈 つまり query: `query RollDice($dice: Int, $sides: Int) { ... }` という形
-    variables: { dice, sides } // 👈 ここで変数を指定
-  })
+    variables: { dice, sides }, // 👈 ここで変数を指定
+  }),
 })
-  .then(res => res.json())
-  .then(data => console.log('data returned', data))
+  .then((res) => res.json())
+  .then((data) => console.log('data returned', data))
 ```
+
+## オブジェクト型 (Object Types)
+
+多くの場合、API から単一の数字や文字列を返したいということはなく、ある程度複雑なオブジェクトを返したいということがほとんどだろう。
+
+GraphQL スキーマ言語では、これまでの例で `Query` 型を定義したのと同じように新たなオブジェクト型を定義できる（buildSchema に渡す）。
+
+それぞれのオブジェクトは、特定の型を返すフィールドや引数を受け付けるメソッドを持つことができる。
+
+たとえば、「引数を渡す」の章では以下のようなランダムにサイコロを振るメソッドを作成した:
+
+```gql
+type Query {
+  rollDice(numDice: Int!, numSides: Int): [Int]
+}
+```
+
+このサイコロに基づくメソッドがもっと欲しくなったとき、`RandomDie` オブジェクト型を用意することでそれを実装できる。
+
+```gql
+type RandomDie {
+  roll(numRolls: Int!): [Int]
+}
+
+type Query {
+  getDie(numSides: Int): RandomDie
+}
+```
+
+root-level で `RandomDie` 型に対する resolver を定義する方法（※）ではなく、ES6 の class を使うこともできる。
+
+```js
+class RandomDie {
+  constructor(numSides) {
+    this.numSides = numSides
+  }
+
+  rollOnce() {
+    return 1 + Math.floor(Math.random() * this.numSides)
+  }
+
+  roll({ numRolls }) {
+    return [...Array(numRolls).keys()].map((_) => this.rollOnce())
+  }
+}
+
+const root = {
+  getDie: ({ numSides }) => new RandomDie(numSides || 6),
+}
+```
+
+引数を取らないフィールドは、オブジェクトのプロパティを使っても、あるいはインスタンスメソッドを使ってもよい。
+（上のコードの例では constructor の中で `this.rollOnce = 1 + Math.floor(Math.random() * this.numSides)` と書くこともできるよねということ、か？
+ただしこの場合 roll({3}) などとリクエストすると 3 回とも同じ目が出てしまう（からこの場合は不適だけど、実装としてはどっちでもいけるよということ？）。）
+
+上記のコード例で言えば、`numSides` と `rollOnce` の両方についてオブジェクトのフィールドで定義できる（rollOnce はメソッド的な意味を持つが）。
+
+```gql
+type RandomDie {
+  numSides: Int!
+  rollOnce: Int!
+  roll(numRolls: Int!): [Int]
+}
+
+type Query {
+  getDie(numSides: Int): RandomDie
+}
+```
+
+---
+
+（※）「root-level で resolver を定義する方法」とは以下のような形だと思われる。
+
+```js
+const rootValue = {
+  getDie: ({ numSides }) => ({
+    numSides,
+    rollOnce: 1 + Math.floor(Math.random() * numSides),
+    roll: ({ numRolls }) =>
+      [...Array(numRolls).keys()].map(
+        (_) => 1 + Math.floor(Math.random() * numSides)
+      ),
+  }),
+}
+```
+
+個人的には class 使うよりもこっちの方がわかりやすい。
+
+---
+
+このようにオブジェクト型を定義することは伝統的な REST API よりも優れているということが往々にしてある。
+あるオブジェクトに関する基本的な情報を取得するために 1 つの API を叩き、続けて、そのオブジェクトについてさらに別の情報を得るために API リクエストを送るということ（← REST API）をせずに、一回の API リクエストですべての情報を得られる（← GraphQL）のである。
+
+これにより帯域幅を節約でき、アプリケーションがより速くなり、また、クライアント側のロジックがシンプルになる。
+
+ここまでで見てきた API はすべてデータを返却する設計になっていた。ストアされたデータを書き換えたり複雑な入力に対応するためには、「ミューテーションとインプットタイプ」を学ぼう（次章以降）。
